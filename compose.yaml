@@ -1,0 +1,51 @@
+services:
+  gitlab:
+    image: gitlab/gitlab-ce:latest
+    container_name: gitlab
+    restart: always
+    hostname: ${GITLAB_HOSTNAME:-gitlab}
+    environment:
+      GITLAB_OMNIBUS_CONFIG: |
+        # External URL - อ่านจาก .env file
+        external_url '${GITLAB_EXTERNAL_URL}'
+
+        # Nginx (ภายใน container)
+        nginx['listen_port'] = 80
+        nginx['listen_https'] = false
+
+        # GitLab settings
+        gitlab_rails['time_zone'] = '${GITLAB_TIMEZONE:-UTC}'
+        gitlab_rails['gitlab_shell_ssh_port'] = ${GITLAB_SSH_PORT:-2222}
+
+        # Resource limits (สำหรับเครื่องที่มี RAM จำกัด)
+        puma['worker_processes'] = 2
+        sidekiq['max_concurrency'] = 10
+        prometheus_monitoring['enable'] = false
+
+        # Backup
+        gitlab_rails['backup_keep_time'] = 1209600          # 14 วัน
+        gitlab_rails['backup_path'] = "/var/opt/gitlab/backups"
+        gitlab_rails['backup_archive_permissions'] = 0644
+    ports:
+      - '${GITLAB_HTTP_PORT:-8000}:80'
+      - '${GITLAB_HTTPS_PORT:-8443}:443'
+      - '${GITLAB_SSH_PORT:-2222}:22'
+    volumes:
+      - config:/etc/gitlab
+      - logs:/var/log/gitlab
+      - data:/var/opt/gitlab
+      - backups:/var/opt/gitlab/backups
+    shm_size: '256m'
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/-/health"]
+      interval: 60s
+      timeout: 30s
+      retries: 5
+      start_period: 300s
+
+# ประกาศ Named Volumes ให้ Docker เป็นคนจัดการ (หมดปัญหา Permission)
+volumes:
+  config:
+  logs:
+  data:
+  backups:

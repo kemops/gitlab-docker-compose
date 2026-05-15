@@ -1,0 +1,33 @@
+# ===== Sensitive Files =====
+.env
+.env.local
+.env.*.local
+
+# ===== GitLab Data =====
+# มี database, repos, secrets, encryption keys
+gitlab/config/
+gitlab/data/
+gitlab/logs/
+gitlab/backups/
+archives/*
+
+# Backup files
+*.tar
+*.tar.gz
+*_gitlab_backup.tar
+
+# Secrets
+**/gitlab-secrets.json
+**/gitlab.rb
+
+# ===== OS / Editor =====
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# ===== Logs =====
+*.log
+logs/
