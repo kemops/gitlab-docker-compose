@@ -10,7 +10,6 @@ gitlab/data/
 gitlab/logs/
 gitlab/backups/
 archives/*
-
 # Backup files
 *.tar
 *.tar.gz
