@@ -3,32 +3,25 @@
 # ==========================================
 # CONFIGURATION
 # ==========================================
-SOURCE_FOLDER="/home/ubuntu/project/container/gitlab-docker-compose/archives"
+# หาที่อยู่ของโฟลเดอร์โปรเจกต์แบบอัตโนมัติ
+COMPOSE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+SOURCE_FOLDER="${COMPOSE_DIR}/archives"
+
 DESTINATION="gdrive:db-backup/gitlab-docker-compose"
 
-# ==========================================
-# MAIN PROCESS
-# ==========================================
-echo "========================================="
-echo "Start the backup process: $(date)"
+log() { echo "[$(date '+%F %T')] $*"; }
 
-# Check if the source directory exists
 if [ ! -d "$SOURCE_FOLDER" ]; then
-    echo "Error: Directory not found at $SOURCE_FOLDER"
+    log "ERROR: Directory not found at $SOURCE_FOLDER"
     exit 1
 fi
 
-echo "Backing up: $SOURCE_FOLDER -> $DESTINATION"
+log "SYNC START: Local -> GDrive"
 
-# Execute rclone copy for directory
-rclone copy "$SOURCE_FOLDER" "$DESTINATION" --progress
-
-# Check the exit status of the rclone command
-if [ $? -eq 0 ]; then
-    echo "Success! Folder backup is complete at: $(date)"
+# เอา --progress ออก เพื่อไม่ให้ log ของ cron รก
+if rclone copy "$SOURCE_FOLDER" "$DESTINATION"; then
+    log "SYNC SUCCESS: All files are up to date."
 else
-    echo "Error: An error occurred during the backup."
+    log "SYNC ERROR: Rclone failed."
     exit 1
 fi
-
-echo "========================================="

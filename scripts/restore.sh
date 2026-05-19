@@ -12,7 +12,7 @@ CONTAINER="${CONTAINER:-gitlab}"
 ARCHIVE_DIR="${ARCHIVE_DIR:-${COMPOSE_DIR}/archives}"
 
 log()  { echo "[$(date '+%F %T')] $*"; }
-die()  { echo "ERROR: $*" >&2; exit 1; }
+die()  { echo "[$(date '+%F %T')] ERROR: $*" >&2; exit 1; }
 
 usage() {
     cat <<EOF
@@ -87,20 +87,12 @@ fi
 [[ -f "${ARCHIVE}" ]] || die "archive not found: ${ARCHIVE}"
 
 # ---- Confirmation ------------------------------------------------------------
-cat <<EOF
-
-╔═══════════════════════════════════════════════════════════════╗
-║              GitLab RESTORE — destructive action!              ║
-╠═══════════════════════════════════════════════════════════════╣
-║ This will OVERWRITE the current GitLab data with the archive: ║
-║  $(basename "${ARCHIVE}")
-╚═══════════════════════════════════════════════════════════════╝
-
-EOF
+echo ""
+log "WARNING: This will OVERWRITE the current GitLab data with $(basename "${ARCHIVE}")"
 
 if [[ "${ASSUME_YES}" -ne 1 ]]; then
     read -rp "Type 'yes' to continue: " ans
-    [[ "${ans}" == "yes" ]] || die "aborted by user"
+    [[ "${ans}" == "yes" ]] || die "Aborted by user."
 fi
 
 # ---- Stage the archive -------------------------------------------------------
@@ -108,55 +100,48 @@ STAGE="${ARCHIVE_DIR}/.stage_restore_$$"
 mkdir -p "${STAGE}"
 trap 'rm -rf "${STAGE}"' EXIT
 
-log "Extracting archive to ${STAGE}..."
+log "TASK: Extracting archive..."
 tar -xzf "${ARCHIVE}" -C "${STAGE}"
 
 APP_TAR="$(find "${STAGE}" -maxdepth 2 -name '*_gitlab_backup.tar' | head -1 || true)"
 SECRETS="$(find "${STAGE}" -maxdepth 2 -name 'gitlab-secrets.json' | head -1 || true)"
 GITLAB_RB="$(find "${STAGE}" -maxdepth 2 -name 'gitlab.rb' | head -1 || true)"
 
-[[ -n "${APP_TAR}" ]] || die "no *_gitlab_backup.tar inside the archive"
-[[ -n "${SECRETS}" ]] || die "no gitlab-secrets.json inside the archive"
+[[ -n "${APP_TAR}" ]] || die "No *_gitlab_backup.tar inside the archive"
+[[ -n "${SECRETS}" ]] || die "No gitlab-secrets.json inside the archive"
 
 APP_TAR_BASENAME="$(basename "${APP_TAR}")"
 BACKUP_NAME="${APP_TAR_BASENAME%_gitlab_backup.tar}"
 
-log "Backup identifier:  ${BACKUP_NAME}"
-
 # ---- Stop services -----------------------------------------------------------
-log "Stopping puma and sidekiq..."
-docker exec "${CONTAINER}" gitlab-ctl stop puma
-docker exec "${CONTAINER}" gitlab-ctl stop sidekiq
+log "TASK: Stopping puma and sidekiq..."
+docker exec "${CONTAINER}" gitlab-ctl stop puma >/dev/null
+docker exec "${CONTAINER}" gitlab-ctl stop sidekiq >/dev/null
 
 # ---- Inject secrets and app backup via docker cp ----------------------------
-log "Injecting gitlab-secrets.json into container..."
+log "TASK: Injecting configs and backup files..."
 docker cp "${SECRETS}" "${CONTAINER}:/etc/gitlab/gitlab-secrets.json"
 docker exec "${CONTAINER}" chmod 600 /etc/gitlab/gitlab-secrets.json
 
 if [[ -n "${GITLAB_RB}" ]]; then
-    log "Injecting gitlab.rb..."
     docker cp "${GITLAB_RB}" "${CONTAINER}:/etc/gitlab/gitlab.rb"
 fi
 
-log "Injecting application backup to container..."
 docker cp "${APP_TAR}" "${CONTAINER}:/var/opt/gitlab/backups/${APP_TAR_BASENAME}"
-# ให้สิทธิ์ user 'git' (UID 998) ภายในคอนเทนเนอร์
 docker exec "${CONTAINER}" chown 998:998 "/var/opt/gitlab/backups/${APP_TAR_BASENAME}"
 docker exec "${CONTAINER}" chmod 600 "/var/opt/gitlab/backups/${APP_TAR_BASENAME}"
 
 # ---- Run the restore --------------------------------------------------------
-log "Running gitlab-backup restore (this can take several minutes)..."
-docker exec -t "${CONTAINER}" gitlab-backup restore "BACKUP=${BACKUP_NAME}" force=yes
+log "TASK: Running gitlab-backup restore..."
+docker exec -t "${CONTAINER}" gitlab-backup restore "BACKUP=${BACKUP_NAME}" force=yes >/dev/null
 
 # ---- Reconfigure, restart, verify -------------------------------------------
-log "Reconfiguring GitLab..."
-docker exec "${CONTAINER}" gitlab-ctl reconfigure
+log "TASK: Reconfiguring and Restarting GitLab..."
+docker exec "${CONTAINER}" gitlab-ctl reconfigure >/dev/null
+docker exec "${CONTAINER}" gitlab-ctl restart >/dev/null
 
-log "Restarting all services..."
-docker exec "${CONTAINER}" gitlab-ctl restart
+log "TASK: Running health check..."
+docker exec -t "${CONTAINER}" gitlab-rake gitlab:check SANITIZE=true >/dev/null || \
+    log "WARNING: gitlab:check reported issues."
 
-log "Running gitlab:check (this can take a minute)..."
-docker exec -t "${CONTAINER}" gitlab-rake gitlab:check SANITIZE=true || \
-    log "WARNING: gitlab:check reported issues — review the output above"
-
-log "Restore completed successfully. Please check your GitLab URL."
+log "RESTORE FINISHED: Please check your GitLab URL."
