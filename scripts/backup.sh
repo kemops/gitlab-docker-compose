@@ -20,6 +20,10 @@ die() { echo "[$(date '+%F %T')] ERROR: $*" >&2; exit 1; }
 docker inspect "${CONTAINER}" >/dev/null 2>&1 \
     || die "Container '${CONTAINER}' is not running."
 
+# ==============================================================================
+# B E G I N   B A C K U P   P R O C E S S
+# ==============================================================================
+echo "###################################################"
 log "BACKUP START: GitLab -> ${OUTPUT_DIR}"
 
 log "TASK: Running gitlab-backup create..."
@@ -48,8 +52,9 @@ SIZE="$(du -h "${ARCHIVE}" | cut -f1)"
 log "SUCCESS: Archive created $(basename "${ARCHIVE}") (${SIZE})"
 
 log "TASK: Pruning archives older than ${KEEP_DAYS} days..."
-find "${OUTPUT_DIR}" -name 'gitlab_full_*.tar.gz' -mtime "+${KEEP_DAYS}" -print -delete
+find "${OUTPUT_DIR}" -name 'gitlab_full_*.tar.gz' -mtime "+${KEEP_DAYS}" -delete
 
 sudo chown "$(id -u):$(id -g)" "${ARCHIVE}" 2>/dev/null || true
 
 log "BACKUP FINISHED"
+echo "###################################################"

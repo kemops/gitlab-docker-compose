@@ -81,7 +81,6 @@ if [[ -z "${ARCHIVE}" ]]; then
     fi
 
     ARCHIVE="${BACKUP_FILES[$((choice-1))]}"
-    log "Selected archive: $(basename "${ARCHIVE}")"
 fi
 
 [[ -f "${ARCHIVE}" ]] || die "archive not found: ${ARCHIVE}"
@@ -94,6 +93,12 @@ if [[ "${ASSUME_YES}" -ne 1 ]]; then
     read -rp "Type 'yes' to continue: " ans
     [[ "${ans}" == "yes" ]] || die "Aborted by user."
 fi
+
+# ==============================================================================
+# B E G I N   R E S T O R E   P R O C E S S
+# ==============================================================================
+echo "###################################################"
+log "RESTORE START: GitLab <- ${ARCHIVE}"
 
 # ---- Stage the archive -------------------------------------------------------
 STAGE="${ARCHIVE_DIR}/.stage_restore_$$"
@@ -120,6 +125,7 @@ docker exec "${CONTAINER}" gitlab-ctl stop sidekiq >/dev/null
 
 # ---- Inject secrets and app backup via docker cp ----------------------------
 log "TASK: Injecting configs and backup files..."
+
 docker cp "${SECRETS}" "${CONTAINER}:/etc/gitlab/gitlab-secrets.json"
 docker exec "${CONTAINER}" chmod 600 /etc/gitlab/gitlab-secrets.json
 
@@ -144,4 +150,6 @@ log "TASK: Running health check..."
 docker exec -t "${CONTAINER}" gitlab-rake gitlab:check SANITIZE=true >/dev/null || \
     log "WARNING: gitlab:check reported issues."
 
-log "RESTORE FINISHED: Please check your GitLab URL."
+log "SUCCESS: GitLab URL and data have been restored."
+log "RESTORE FINISHED"
+echo "###################################################"
